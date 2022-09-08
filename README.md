@@ -1,5 +1,5 @@
-# dataverse-cli
-Dataverse command line tool
+# dataverse-container
+Docker container to stage [Dataverse](https://dataverse.org/) files.
 
 Environment variables:
 - DV_BASE_URL - Required URL for your dataverse
