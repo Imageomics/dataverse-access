@@ -1,5 +1,6 @@
 FROM python:3.10-buster
-ADD requirements.txt /src/requirements.txt
-RUN pip install -r /src/requirements.txt
-ADD dv.py /src/dv.py
-CMD python /src/dv.py --help
+LABEL "org.opencontainers.image.authors"="John Bradley <john.bradley@duke.edu>"
+LABEL "org.opencontainers.image.description"="Tool to upload and download files from a Dataverse instance"
+ADD . /src
+RUN cd /src && python setup.py install
+CMD dva --help
