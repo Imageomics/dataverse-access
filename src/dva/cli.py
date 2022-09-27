@@ -1,10 +1,14 @@
 import click
 import os
 import json
-from dva.api import get_api
+from dva.api import create_api
 from dva.config import save_config_file, MissingURLConfigError
 
 DOI_HELP = "Dataverse 'DOI'"
+
+
+def get_api(url):
+    return create_api(url, echo=click.echo)
 
 
 @click.group()
@@ -44,10 +48,8 @@ def download(doi, dest, url):
     api = get_api(url)
     for dvfile in api.get_files_for_doi(doi):
         path = api.get_dvfile_path(dvfile, dest)
-        click.echo(f"Downloading {path}")
         api.download_file(dvfile, path)
         api.verify_checksum(dvfile, path)
-        click.echo(f"Verified file checksum for {path}.")
 
 
 @click.command()
@@ -64,13 +66,12 @@ def upload(src, doi, url):
     paths_to_upload = []
     if os.path.isfile(src):
        paths_to_upload.append(src)
+       api.upload_file(doi, src)
     else:
        for folder, subfolders, files in os.walk(src):
-            for file in files:
-                paths_to_upload.append(os.path.join(folder, file))
-    for path in paths_to_upload:
-        click.echo(f"Uploading {path}")
-        api.upload_file(doi, path)
+            for filename in files:
+                path = os.path.join(folder, filename)
+                api.upload_file(doi, path)
 
 
 @click.command()

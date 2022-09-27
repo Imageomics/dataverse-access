@@ -1,7 +1,7 @@
 import unittest
 import hashlib
 from unittest.mock import Mock, patch, mock_open
-from dva.api import API, get_api, APIException
+from dva.api import create_api, API, APIException
 
 class TestAPI(unittest.TestCase):
     def setUp(self):
@@ -11,16 +11,16 @@ class TestAPI(unittest.TestCase):
 
     @patch('dva.api.Config')
     @patch('dva.api.NativeApi')
-    @patch('dva.api.DataAccessApi')
-    def test_get_api(self, mock_data_api, mock_native_api, mock_config):
+    @patch('dva.api.StreamingDataAccessApi')
+    def test_create_api(self, mock_data_api, mock_native_api, mock_config):
         mock_config.return_value = self.config
-        api = get_api(url=None)
+        api = create_api(url=None, echo=Mock())
         mock_data_api.assert_called_with(self.url, self.token)
         mock_native_api.assert_called_with(self.url, self.token)
 
     @patch('dva.api.Config')
     @patch('dva.api.NativeApi')
-    @patch('dva.api.DataAccessApi')
+    @patch('dva.api.StreamingDataAccessApi')
     def test_get_files_for_doi(self, mock_data_api, mock_native_api, mock_config):
         response = Mock()
         response.json.return_value = {
@@ -35,7 +35,7 @@ class TestAPI(unittest.TestCase):
             }
         }
         mock_native_api.return_value.get_dataset.return_value = response
-        api = get_api(url=None)
+        api = create_api(url=None, echo=Mock())
         result = api.get_files_for_doi(doi='doi:10.70122/FK2/WUU4DM')
         print(result)
         self.assertEqual(len(result), 1)
@@ -55,24 +55,25 @@ class TestAPI(unittest.TestCase):
 
     @patch('dva.api.Config')
     @patch('dva.api.NativeApi')
-    @patch('dva.api.DataAccessApi')
+    @patch('dva.api.StreamingDataAccessApi')
     def test_download_file(self, mock_data_api, mock_native_api, mock_config):
         dvfile = {
             "dataFile": {
                 "id": 2222
             }
         }
-        api = get_api(url=None)
+        response = Mock()
+        response.iter_content.return_value = ['myfiledata']
+        mock_data_api.return_value.get_streaming_datafile.return_value = response
+        api = create_api(url=None, echo=Mock())
         with patch("builtins.open", mock_open()) as mock_file:
             api.download_file(dvfile, path="/tmp/data.txt")
         mock_file.assert_called_with("/tmp/data.txt", "wb")
-        mock_file.return_value.write.assert_called_with(
-            mock_data_api.return_value.get_datafile.return_value.content
-        )
+        mock_file.return_value.write.assert_called_with("myfiledata")
 
     @patch('dva.api.Config')
     @patch('dva.api.NativeApi')
-    @patch('dva.api.DataAccessApi')
+    @patch('dva.api.StreamingDataAccessApi')
     def test_verify_checksum(self, mock_data_api, mock_native_api, mock_config):
         file_data = b"123"
         file_data_hash = hashlib.md5(file_data).hexdigest()
@@ -85,16 +86,16 @@ class TestAPI(unittest.TestCase):
                 }
             }
         }
-        api = get_api(url=None)
+        api = create_api(url=None, echo=Mock())
         with patch("builtins.open", mock_open(read_data=b"123")) as mock_file:
             api.verify_checksum(dvfile, "/tmp/data.txt")
 
     @patch('dva.api.Config')
     @patch('dva.api.NativeApi')
-    @patch('dva.api.DataAccessApi')
+    @patch('dva.api.StreamingDataAccessApi')
     @patch('dva.api.Datafile')
     def test_verify_checksum(self, mock_datafile, mock_data_api, mock_native_api, mock_config):
-        api = get_api(url=None)
+        api = create_api(url=None, echo=Mock())
         response = Mock()
         response.json.return_value = {
             "status": "OK"
