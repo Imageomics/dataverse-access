@@ -41,17 +41,17 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["dataFile"]["id"], 2222)
 
-    def test_get_dvfile_path(self):
+    def test_get_remote_path(self):
         dvfile = {
             "dataFile": {
                 "filename": "data.txt"
             }
         }
-        result = API.get_dvfile_path(dvfile, parent_dir="/tmp")
-        self.assertEqual(result, "/tmp/data.txt")
+        result = API.get_remote_path(dvfile)
+        self.assertEqual(result, "data.txt")
         dvfile["directoryLabel"] = "results"
-        result = API.get_dvfile_path(dvfile, parent_dir="/tmp")
-        self.assertEqual(result, "/tmp/results/data.txt")
+        result = API.get_remote_path(dvfile)
+        self.assertEqual(result, "results/data.txt")
 
     @patch('dva.api.Config')
     @patch('dva.api.NativeApi')
@@ -62,9 +62,35 @@ class TestAPI(unittest.TestCase):
                 "id": 2222
             }
         }
+        mock_data_api.return_value.get_datafile.return_value = Mock(headers={
+            'Content-disposition': 'attachment; filename="data.txt"'
+        })
         api = get_api(url=None)
         with patch("builtins.open", mock_open()) as mock_file:
-            api.download_file(dvfile, path="/tmp/data.txt")
+            api.download_file(dvfile, dest="/tmp")
+        mock_data_api.return_value.get_datafile.assert_called_with(2222, data_format=None)
+        mock_file.assert_called_with("/tmp/data.txt", "wb")
+        mock_file.return_value.write.assert_called_with(
+            mock_data_api.return_value.get_datafile.return_value.content
+        )
+
+    @patch('dva.api.Config')
+    @patch('dva.api.NativeApi')
+    @patch('dva.api.DataAccessApi')
+    def test_download_file_original(self, mock_data_api, mock_native_api, mock_config):
+        dvfile = {
+            "dataFile": {
+                "id": 2222,
+                "originalFileFormat": "CSV"
+            }
+        }
+        mock_data_api.return_value.get_datafile.return_value = Mock(headers={
+            'Content-disposition': 'attachment; filename="data.txt"'
+        })
+        api = get_api(url=None)
+        with patch("builtins.open", mock_open()) as mock_file:
+            api.download_file(dvfile, dest="/tmp")
+        mock_data_api.return_value.get_datafile.assert_called_with(2222, data_format='original')
         mock_file.assert_called_with("/tmp/data.txt", "wb")
         mock_file.return_value.write.assert_called_with(
             mock_data_api.return_value.get_datafile.return_value.content
@@ -108,3 +134,14 @@ class TestAPI(unittest.TestCase):
             with patch("builtins.open", mock_open(read_data=b"123")) as mock_file:
                 api.upload_file(doi='doi:10.70122/FK2/WUU4DM', path="/tmp/data.txt")
         self.assertEqual(str(raised_exception.exception), "Uploading failed with status bad.")
+
+    def test_get_download_filename(self):
+        good_values = [
+            ('attachment; filename=bob.txt', 'bob.txt'),
+            ('attachment; filename="tom.txt"', 'tom.txt'),
+            ('attachment; filename="file1.txt"; other="a"', 'file1.txt'),
+        ]
+        response = Mock()
+        for content_disposition, expected_result in good_values:
+            response.headers = {'Content-disposition': content_disposition}
+            self.assertEqual(expected_result, API.get_download_filename(response))

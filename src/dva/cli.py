@@ -27,8 +27,8 @@ def ls(doi, json_format, url):
         click.echo(json.dumps(dvfiles, indent=4))
     else:
         for dvfile in dvfiles:
-            path = api.get_dvfile_path(dvfile)
-            click.echo(path)
+            remote_path = api.get_remote_path(dvfile)
+            click.echo(remote_path)
 
 
 @click.command()
@@ -43,11 +43,12 @@ def download(doi, dest, url):
     """
     api = get_api(url)
     for dvfile in api.get_files_for_doi(doi):
-        path = api.get_dvfile_path(dvfile, dest)
-        click.echo(f"Downloading {path}")
-        api.download_file(dvfile, path)
+        file_id = dvfile["dataFile"]["id"]
+        click.echo(f"Downloading file {file_id}")
+        path = api.download_file(dvfile, dest)
+        click.echo(f"Downloaded file {file_id} to {path}")
         api.verify_checksum(dvfile, path)
-        click.echo(f"Verified file checksum for {path}.")
+        click.echo(f"Verified file checksum for {path}")
 
 
 @click.command()
