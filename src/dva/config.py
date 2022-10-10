@@ -3,6 +3,7 @@ import json
 
 
 CONFIG_FILE = "~/.dataverse"
+CONFIG_FILE_PATH_VAR_NAME = "DATAVERSE_CONFIG_PATH"
 CONFIG_URL = "url"
 CONFIG_TOKEN = "token"
 
@@ -39,7 +40,9 @@ class Config(object):
 
 
 def _read_config_file():
-    path = os.path.expanduser(CONFIG_FILE)
+    path = os.environ.get(CONFIG_FILE_PATH_VAR_NAME)
+    if not path:
+        path = os.path.expanduser(CONFIG_FILE)
     if os.path.exists(path):
         with open(path, 'r') as infile:
             data = json.load(infile)

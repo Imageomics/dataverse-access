@@ -32,6 +32,7 @@ This command will prompt you for your Dataverse URL and API token and create a c
 with these two values in your home directory. The config file is named `.dataverse` and is in 
 JSON format containing keys "url" and "token".
 
+To use an alternate location for the config file set the `DATAVERSE_CONFIG_PATH` environment variable.
 
 ## Commands
 

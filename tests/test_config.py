@@ -30,8 +30,22 @@ class TestConfig(unittest.TestCase):
         })
         with patch("builtins.open", mock_open(read_data=config_file_data)) as mock_file:
             config = Config(url=None)
+        mock_file.assert_called_with(mock_os.path.expanduser.return_value, 'r')
         self.assertEqual(config.url, "myurl")
         self.assertEqual(config.token, "secret")
+
+    @patch('dva.config.os')
+    def test_config_from_file_with_env_setting(self, mock_os):
+        mock_os.path.exists.return_value = True # no config file
+        mock_os.path.exists.return_value = True # no config file
+        mock_os.environ = { "DATAVERSE_CONFIG_PATH" : "/tmp/.dataverse"}
+        config_file_data = json.dumps({
+            "url": "myurl",
+            "token": "secret",
+        })
+        with patch("builtins.open", mock_open(read_data=config_file_data)) as mock_file:
+            config = Config(url=None)
+        mock_file.assert_called_with('/tmp/.dataverse', 'r')
 
     @patch('dva.config.os')
     def test_config_env_variables(self, mock_os):
