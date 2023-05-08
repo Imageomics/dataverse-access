@@ -1,6 +1,7 @@
 import os
 import re
 import hashlib
+import requests
 from pyDataverse.api import NativeApi, DataAccessApi
 from pyDataverse.models import Datafile
 from dva.config import Config
@@ -19,28 +20,39 @@ class API(object):
         dataset = self._api.get_dataset(doi).json()
         return dataset['data']['latestVersion']['files']
 
-    def _get_datafile_response(self, dvfile):
+    def _download_datafile(self, dvfile, dest):
         dv_data_file = dvfile["dataFile"]
         # Retrieve the original file (that matches MD5 checksum) for files processed by Dataverse ingress
         data_format = None
         if dv_data_file.get("originalFileFormat"):
             data_format = "original"
 
-        # NOTE: the call below blocks until the entire file is retrieved (in memory)
-        return self._data_api.get_datafile(dv_data_file["id"], data_format=data_format)
+        # code from pyDataverse
+        url = "{0}/datafile/{1}".format(
+                self._data_api.base_url_api_data_access, dv_data_file["id"]
+        )
+        if data_format:
+            url += "&format={0}".format(data_format)
+        headers = {
+            "X-Dataverse-key": self._data_api.api_token
+        }
+        with requests.get(url, headers=headers, stream=True) as resp:
+            resp.raise_for_status()
+            filename = self.get_download_filename(resp)
+            directory_label = dvfile.get("directoryLabel", "")
+            if directory_label:
+                path = os.path.join(dest, directory_label, filename)
+            else:
+                path = os.path.join(dest, filename)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            resp.raise_for_status()
+            with open(path, 'wb') as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        return path
 
     def download_file(self, dvfile, dest):
-        response = self._get_datafile_response(dvfile)
-        filename = self.get_download_filename(response)
-        directory_label = dvfile.get("directoryLabel", "")
-        if directory_label:
-            path = os.path.join(dest, directory_label, filename)
-        else:
-            path = os.path.join(dest, filename)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as f:
-            f.write(response.content)
-        return path
+        return self._download_datafile(dvfile, dest)
 
     @staticmethod
     def verify_checksum(dvfile, path):
