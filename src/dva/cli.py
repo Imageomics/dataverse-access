@@ -64,14 +64,14 @@ def upload(src, doi, url):
     api = get_api(url)
     paths_to_upload = []
     if os.path.isfile(src):
-       paths_to_upload.append(src)
+       paths_to_upload.append((src, ""))
     else:
-       for folder, subfolders, files in os.walk(src):
+       for dirpath, dirnames, files in os.walk(src):
             for file in files:
-                paths_to_upload.append(os.path.join(folder, file))
-    for path in paths_to_upload:
+                paths_to_upload.append((os.path.join(dirpath, file), dirpath))
+    for path, dirpath in paths_to_upload:
         click.echo(f"Uploading {path}")
-        api.upload_file(doi, path)
+        api.upload_file(doi, path, dirpath)
 
 
 @click.command()

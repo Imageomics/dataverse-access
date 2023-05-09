@@ -1,5 +1,6 @@
 import unittest
 import hashlib
+import json
 from unittest.mock import Mock, patch, mock_open
 from dva.api import API, get_api, APIException
 
@@ -56,45 +57,26 @@ class TestAPI(unittest.TestCase):
     @patch('dva.api.Config')
     @patch('dva.api.NativeApi')
     @patch('dva.api.DataAccessApi')
-    def test_download_file(self, mock_data_api, mock_native_api, mock_config):
-        dvfile = {
-            "dataFile": {
-                "id": 2222
-            }
-        }
-        mock_data_api.return_value.get_datafile.return_value = Mock(headers={
-            'Content-disposition': 'attachment; filename="data.txt"'
-        })
-        api = get_api(url=None)
-        with patch("builtins.open", mock_open()) as mock_file:
-            api.download_file(dvfile, dest="/tmp")
-        mock_data_api.return_value.get_datafile.assert_called_with(2222, data_format=None)
-        mock_file.assert_called_with("/tmp/data.txt", "wb")
-        mock_file.return_value.write.assert_called_with(
-            mock_data_api.return_value.get_datafile.return_value.content
-        )
-
-    @patch('dva.api.Config')
-    @patch('dva.api.NativeApi')
-    @patch('dva.api.DataAccessApi')
-    def test_download_file_original(self, mock_data_api, mock_native_api, mock_config):
+    @patch('dva.api.subprocess')
+    def test_download_file(self, mock_subprocess, mock_data_api, mock_native_api, mock_config):
         dvfile = {
             "dataFile": {
                 "id": 2222,
-                "originalFileFormat": "CSV"
+                "filename": "data.txt"
             }
         }
+        mock_native_api.return_value.base_url = 'https://example.com'
+        mock_native_api.return_value.api_token = 'secret'
         mock_data_api.return_value.get_datafile.return_value = Mock(headers={
             'Content-disposition': 'attachment; filename="data.txt"'
         })
         api = get_api(url=None)
-        with patch("builtins.open", mock_open()) as mock_file:
-            api.download_file(dvfile, dest="/tmp")
-        mock_data_api.return_value.get_datafile.assert_called_with(2222, data_format='original')
-        mock_file.assert_called_with("/tmp/data.txt", "wb")
-        mock_file.return_value.write.assert_called_with(
-            mock_data_api.return_value.get_datafile.return_value.content
-        )
+        api.download_file(dvfile, dest="/tmp")
+        mock_subprocess.run.assert_called_with([
+            'curl', '-H', 'X-Dataverse-key:secret',
+            'https://example.com/api/access/datafile/2222',
+            '--output', '/tmp/data.txt'],
+            check=True, stdout=mock_subprocess.PIPE)
 
     @patch('dva.api.Config')
     @patch('dva.api.NativeApi')
@@ -119,21 +101,31 @@ class TestAPI(unittest.TestCase):
     @patch('dva.api.NativeApi')
     @patch('dva.api.DataAccessApi')
     @patch('dva.api.Datafile')
-    def test_verify_checksum(self, mock_datafile, mock_data_api, mock_native_api, mock_config):
+    @patch('dva.api.subprocess')
+    def test_upload(self, mock_subprocess, mock_datafile, mock_data_api, mock_native_api, 
+                    mock_config):
         api = get_api(url=None)
-        response = Mock()
-        response.json.return_value = {
+        mock_subprocess.run.return_value.stdout = json.dumps({
             "status": "OK"
-        }
-        mock_native_api.return_value.upload_datafile.return_value = response
-        with patch("builtins.open", mock_open(read_data=b"123")) as mock_file:
-            api.upload_file(doi='doi:10.70122/FK2/WUU4DM', path="/tmp/data.txt")
+        })
+        mock_native_api.return_value.base_url = 'https://example.com'
+        mock_native_api.return_value.api_token = 'secret'
+        api.upload_file(doi='doi:10.70122/FK2/WUU4DM', path="/tmp/data.txt")
+        expected_cmd = [
+            'curl', '-H', 'X-Dataverse-key:secret',
+            '-F', 'file=@/tmp/data.txt',
+            '-F', 'jsonData={"directoryLabel": ""}',
+            'https://example.com/api/datasets/:persistentId/add?persistentId=doi:10.70122/FK2/WUU4DM'
+        ]
+        mock_subprocess.run.assert_called_with(expected_cmd, check=True, stdout=mock_subprocess.PIPE)
 
-        response.json.return_value["status"] = "bad"
+        mock_subprocess.run.return_value.stdout = json.dumps({
+            "status": "ERROR",
+            "message": "Failure"
+        })
         with self.assertRaises(APIException) as raised_exception:
-            with patch("builtins.open", mock_open(read_data=b"123")) as mock_file:
-                api.upload_file(doi='doi:10.70122/FK2/WUU4DM', path="/tmp/data.txt")
-        self.assertEqual(str(raised_exception.exception), "Uploading failed with status bad.")
+            api.upload_file(doi='doi:10.70122/FK2/WUU4DM', path="/tmp/data.txt")
+        self.assertEqual(str(raised_exception.exception), "ERROR Failure")
 
     def test_get_download_filename(self):
         good_values = [

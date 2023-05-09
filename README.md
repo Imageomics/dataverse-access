@@ -3,6 +3,9 @@
 
 ## Requirements
 - [python](https://www.python.org/) - version 3.7+
+- [curl](https://curl.se/)
+
+The `curl` command line program is used to efficently upload and download files.
 
 ## Installation
 Create and activate a virtual environment, then install this tool:
