@@ -12,9 +12,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - uses: actions/setup-python@v4
+      - uses: conda-incubator/setup-miniconda@v2
         with:
           python-version: "3.11"
+          activate-environment: dva
+          environment-file: environment.yml
 
       - name: Install tox
         run: pip install tox
