@@ -1,13 +1,54 @@
 import os
 import re
+import json
 import hashlib
+import pycurl
 from pyDataverse.api import NativeApi, DataAccessApi
 from pyDataverse.models import Datafile
 from dva.config import Config
+from io import BytesIO
 
 
 class APIException(Exception):
     pass
+
+
+def dataverse_file_download(base_url, persistent_id, api_token, path):
+    dvurl = f"{base_url}api/access/datafile/{persistent_id}"
+    with open(path, 'wb') as f:
+        c = pycurl.Curl()
+        c.setopt(c.URL, dvurl)
+        c.setopt(pycurl.HTTPHEADER, [f'X-Dataverse-key: {api_token}'])
+        c.setopt(c.WRITEDATA, f)
+        c.perform()
+        status_code = c.getinfo(pycurl.HTTP_CODE)
+        if status_code != 200:
+            os.unlink(f.name)
+        c.close()
+        if status_code != 200:
+            raise APIException(f"Failed to download file status:{status_code}")
+
+
+def dataverse_file_upload(base_url, persistent_id, api_token, path, directory_label):
+    buffer = BytesIO()
+    dvurl = f"{base_url}/api/datasets/:persistentId/add?persistentId={persistent_id}"
+    c = pycurl.Curl()
+    c.setopt(c.URL, dvurl)
+    c.setopt(pycurl.HTTPHEADER, [f'X-Dataverse-key: {api_token}'])
+    c.setopt(c.POST, 1)
+    c.setopt(c.WRITEDATA, buffer)
+    payload = {
+        "directoryLabel": directory_label,
+        "tabIngest":"false"
+    }
+    c.setopt(c.HTTPPOST, [
+        ("file", (c.FORM_FILE, path)),
+        ("jsonData", json.dumps(payload) )
+    ])
+    c.perform()
+    status_code = c.getinfo(pycurl.HTTP_CODE)
+    c.close()
+    return buffer.getvalue().decode('utf-8'), status_code
 
 
 class API(object):
@@ -30,16 +71,20 @@ class API(object):
         return self._data_api.get_datafile(dv_data_file["id"], data_format=data_format)
 
     def download_file(self, dvfile, dest):
-        response = self._get_datafile_response(dvfile)
-        filename = self.get_download_filename(response)
         directory_label = dvfile.get("directoryLabel", "")
+        filename = dvfile["dataFile"]["filename"]
+        persistent_id = dvfile["dataFile"]["id"]
         if directory_label:
             path = os.path.join(dest, directory_label, filename)
         else:
             path = os.path.join(dest, filename)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as f:
-            f.write(response.content)
+        dataverse_file_download(
+            base_url=self._api.base_url,
+            persistent_id=persistent_id,
+            api_token=self._api.api_token,
+            path=path
+        )
         return path
 
     @staticmethod
@@ -56,15 +101,19 @@ class API(object):
                 raise APIException(f"Hash value mismatch for {path}: {checksum_value} vs {hash} ")
 
     def upload_file(self, doi, path, dirname=""):
-        df = Datafile()
-        data = {"pid": doi, "filename": os.path.basename(path)}
-        if dirname:
-           data["directoryLabel"] = dirname
-        df.set(data)
-        resp = self._api.upload_datafile(doi, path, df.json())
-        status = resp.json()["status"]
-        if status != "OK":
-           raise APIException(f"Uploading failed with status {status}.")
+        payload, status_code = dataverse_file_upload(
+            base_url=self._api.base_url,
+            persistent_id=doi,
+            api_token=self._api.api_token,
+            path=path,
+            directory_label=dirname
+        )
+        if status_code >= 500:
+            raise APIException(f"Received {status_code} error.\n\n{payload}")
+        else:
+            if status_code != 200:
+                data = json.loads(payload)
+                raise APIException(data.get("status") + " " + data.get("message"))
 
     @staticmethod
     def get_remote_path(dvfile):
