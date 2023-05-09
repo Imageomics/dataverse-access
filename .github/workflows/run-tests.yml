@@ -12,12 +12,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-    - name: Cache Tox
-      id: cache-tox
-      uses: actions/cache@v3
-      with:
-        path: ~/.tox
-        key: tox
+      - name: Cache Tox
+        id: cache-tox
+        uses: actions/cache@v3
+        with:
+          path: ~/.tox
+          key: tox
 
       - uses: actions/setup-python@v4
         with:
